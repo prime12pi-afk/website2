@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>미분 시각화 웹 앱</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/plotly.js/2.26.0/plotly.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.js"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/tailwindcss/2.2.19/tailwind.min.css" rel="stylesheet">
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+        }
+        .math-input {
+            font-family: 'Courier New', monospace;
+        }
+    </style>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-indigo-100 min-h-screen p-4">
+    <div class="max-w-7xl mx-auto">
+        <!-- 제목 -->
+        <div class="text-center mb-8">
+            <h1 class="text-4xl font-bold text-gray-800 mb-2">미분 시각화</h1>
+            <p class="text-lg text-gray-600">할선을 이용한 미분 개념 이해</p>
+        </div>
+
+        <!-- 컨트롤 패널 -->
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+                <!-- 예시 함수 선택 -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">예시 함수</label>
+                    <select id="exampleFunction" class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500">
+                        <option value="">직접 입력</option>
+                        <option value="x^2">x²</option>
+                        <option value="x^3">x³</option>
+                        <option value="sin(x)">sin(x)</option>
+                        <option value="cos(x)">cos(x)</option>
+                        <option value="exp(x)">e^x</option>
+                        <option value="log(x)">ln(x)</option>
+                        <option value="sqrt(x)">√x</option>
+                        <option value="1/x">1/x</option>
+                    </select>
+                </div>
+
+                <!-- 함수 입력 -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">함수 f(x)</label>
+                    <input type="text" id="functionInput" placeholder="예: x^2, sin(x), exp(x)" 
+                           class="math-input w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" value="x^2">
+                </div>
+
+                <!-- 미분점 입력 -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">미분점 x = a</label>
+                    <input type="number" id="pointInput" step="0.1" 
+                           class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" value="2">
+                </div>
+
+                <!-- h 값 슬라이더 -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-2">h 값: <span id="hValue" class="font-mono text-blue-600">1.0</span></label>
+                    <input type="range" id="hSlider" min="0.1" max="3" step="0.1" value="1" 
+                           class="w-full h-2 bg-gray-200 rounded-lg appearance-none cursor-pointer slider">
+                </div>
+            </div>
+        </div>
+
+        <!-- 정보 패널 -->
+        <div class="bg-white rounded-xl shadow-lg p-6 mb-6">
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                <div class="text-center">
+                    <h3 class="text-lg font-semibold text-gray-700 mb-2">점 A 좌표</h3>
+                    <p id="pointA" class="text-xl font-mono text-blue-600">(2.0, 4.0)</p>
+                </div>
+                <div class="text-center">
+                    <h3 class="text-lg font-semibold text-gray-700 mb-2">점 B 좌표</h3>
+                    <p id="pointB" class="text-xl font-mono text-green-600">(3.0, 9.0)</p>
+                </div>
+                <div class="text-center">
+                    <h3 class="text-lg font-semibold text-gray-700 mb-2">할선의 기울기</h3>
+                    <p id="slope" class="text-xl font-mono text-red-600">5.0</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- 그래프 영역 -->
+        <div class="bg-white rounded-xl shadow-lg p-6">
+            <div id="graph" style="width: 100%; height: 600px;"></div>
+        </div>
+
+        <!-- 수식 설명 -->
+        <div class="bg-white rounded-xl shadow-lg p-6 mt-6">
+            <h3 class="text-lg font-semibold text-gray-700 mb-3">할선의 기울기 공식</h3>
+            <p class="text-center text-lg">
+                <span class="font-mono bg-gray-100 px-3 py-1 rounded">기울기 = [f(a+h) - f(a)] / h</span>
+            </p>
+            <p class="text-sm text-gray-600 mt-2 text-center">
+                h → 0일 때, 할선의 기울기는 점 (a, f(a))에서의 접선의 기울기인 f'(a)에 수렴합니다.
+            </p>
+        </div>
+    </div>
+
+    <script>
+        // 전역 변수
+        let currentFunction = 'x^2';
+        let currentA = 2;
+        let currentH = 1;
+
+        // 수학 함수 파서
+        function parseFunction(funcStr) {
+            return funcStr
+                .replace(/\^/g, '**')
+                .replace(/sin/g, 'Math.sin')
+                .replace(/cos/g, 'Math.cos')
+                .replace(/tan/g, 'Math.tan')
+                .replace(/exp/g, 'Math.exp')
+                .replace(/log/g, 'Math.log')
+                .replace(/sqrt/g, 'Math.sqrt')
+                .replace(/pi/g, 'Math.PI')
+                .replace(/e/g, 'Math.E');
+        }
+
+        // 함수값 계산
+        function evaluateFunction(funcStr, x) {
+            try {
+                const parsedFunc = parseFunction(funcStr);
+                return Function('x', `return ${parsedFunc}`)(x);
+            } catch (e) {
+                return null;
+            }
+        }
+
+        // 그래프 업데이트
+        function updateGraph() {
+            const xRange = [];
+            const yRange = [];
+            
+            // 함수 곡선을 위한 데이터 포인트 생성
+            for (let x = -1; x <= 6; x += 0.1) {
+                const y = evaluateFunction(currentFunction, x);
+                if (y !== null && !isNaN(y) && isFinite(y)) {
+                    xRange.push(x);
+                    yRange.push(y);
+                }
+            }
+
+            // 점 A와 B의 좌표 계산
+            const xA = currentA;
+            const yA = evaluateFunction(currentFunction, xA);
+            const xB = currentA + currentH;
+            const yB = evaluateFunction(currentFunction, xB);
+
+            // 할선의 기울기 계산
+            const slope = (yB - yA) / currentH;
+
+            // 할선을 위한 확장된 직선 계산
+            const lineXStart = -1;
+            const lineXEnd = 6;
+            const lineYStart = yA + slope * (lineXStart - xA);
+            const lineYEnd = yA + slope * (lineXEnd - xA);
+
+            // 정보 업데이트
+            document.getElementById('pointA').textContent = `(${xA.toFixed(1)}, ${yA.toFixed(1)})`;
+            document.getElementById('pointB').textContent = `(${xB.toFixed(1)}, ${yB.toFixed(1)})`;
+            document.getElementById('slope').textContent = slope.toFixed(1);
+
+            // Plotly 데이터
+            const traces = [
+                // 함수 곡선
+                {
+                    x: xRange,
+                    y: yRange,
+                    type: 'scatter',
+                    mode: 'lines',
+                    name: `f(x) = ${currentFunction}`,
+                    line: { color: '#3B82F6', width: 3 }
+                },
+                // 할선
+                {
+                    x: [lineXStart, lineXEnd],
+                    y: [lineYStart, lineYEnd],
+                    type: 'scatter',
+                    mode: 'lines',
+                    name: '할선',
+                    line: { color: '#EF4444', width: 2, dash: 'dash' }
+                },
+                // 점 A
+                {
+                    x: [xA],
+                    y: [yA],
+                    type: 'scatter',
+                    mode: 'markers',
+                    name: '점 A',
+                    marker: { color: '#3B82F6', size: 12, symbol: 'circle' }
+                },
+                // 점 B
+                {
+                    x: [xB],
+                    y: [yB],
+                    type: 'scatter',
+                    mode: 'markers',
+                    name: '점 B',
+                    marker: { color: '#10B981', size: 12, symbol: 'circle' }
+                }
+            ];
+
+            // 레이아웃
+            const layout = {
+                title: {
+                    text: '미분의 기하학적 의미',
+                    font: { size: 20 }
+                },
+                xaxis: {
+                    title: 'x',
+                    range: [-1, 6],
+                    showgrid: true,
+                    gridcolor: '#E5E7EB'
+                },
+                yaxis: {
+                    title: 'y',
+                    range: [-2, 20],
+                    showgrid: true,
+                    gridcolor: '#E5E7EB'
+                },
+                plot_bgcolor: '#F9FAFB',
+                paper_bgcolor: 'white',
+                showlegend: true,
+                legend: {
+                    x: 0.02,
+                    y: 0.98,
+                    bgcolor: 'rgba(255,255,255,0.8)'
+                }
+            };
+
+            Plotly.newPlot('graph', traces, layout, { responsive: true });
+        }
+
+        // 이벤트 리스너
+        document.getElementById('exampleFunction').addEventListener('change', function() {
+            const selectedFunc = this.value;
+            if (selectedFunc) {
+                document.getElementById('functionInput').value = selectedFunc;
+                currentFunction = selectedFunc;
+                updateGraph();
+            }
+        });
+
+        document.getElementById('functionInput').addEventListener('input', function() {
+            currentFunction = this.value || 'x^2';
+            updateGraph();
+        });
+
+        document.getElementById('pointInput').addEventListener('input', function() {
+            currentA = parseFloat(this.value) || 2;
+            updateGraph();
+        });
+
+        document.getElementById('hSlider').addEventListener('input', function() {
+            currentH = parseFloat(this.value);
+            document.getElementById('hValue').textContent = currentH.toFixed(1);
+            updateGraph();
+        });
+
+        // 초기 그래프 생성
+        updateGraph();
+
+        // 슬라이더 스타일링
+        const style = document.createElement('style');
+        style.textContent = `
+            .slider::-webkit-slider-thumb {
+                appearance: none;
+                height: 20px;
+                width: 20px;
+                border-radius: 50%;
+                background: #3B82F6;
+                cursor: pointer;
+                border: 2px solid white;
+                box-shadow: 0 0 0 1px rgba(0,0,0,0.1);
+            }
+            
+            .slider::-webkit-slider-track {
+                height: 8px;
+                border-radius: 4px;
+                background: #E5E7EB;
+            }
+        `;
+        document.head.appendChild(style);
+    </script>
+</body>
+</html>
